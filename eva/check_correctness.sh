@@ -5,17 +5,10 @@ GOLDEN_DIR=~/hw3/testcases/golden
 # collect all output PNGs from the various scripts
 declare -A OUTPUT_PNGS
 
-# q1_serial: one png per testcase
-for name in imbalance_c100000 medium_c200000 large_c1000000 large_c2000000 large_c4000000; do
-    OUTPUT_PNGS["q1_serial_${name}"]="$HOME/hw3/eva/output/serial/${name}.png"
-done
-
-# q1_mpi: one png per testcase per npernode
-for name in imbalance_c100000 medium_c200000 large_c1000000 large_c2000000 large_c4000000; do
-    for npernode in 1 2 4 8 12 16; do
-        OUTPUT_PNGS["q1_mpi_${name}_npernode${npernode}"]="$HOME/hw3/eva/output/mpi/${name}_npernode${npernode}.png"
-    done
-done
+# # q1_serial: one png per testcase
+# for name in imbalance_c100000 medium_c200000 large_c1000000 large_c2000000 large_c4000000; do
+#     OUTPUT_PNGS["q1_serial_${name}"]="$HOME/hw3/eva/output/serial/${name}.png"
+# done
 
 # q1_mpi_new: same structure
 for name in imbalance_c100000 medium_c200000 large_c1000000 large_c2000000 large_c4000000; do
@@ -24,19 +17,19 @@ for name in imbalance_c100000 medium_c200000 large_c1000000 large_c2000000 large
     done
 done
 
-# q2: one png per testcase per npernode
-for name in imbalance_c100000 medium_c200000 large_c1000000 large_c2000000 large_c4000000; do
-    for npernode in 1 2 4 8 12 16; do
-        OUTPUT_PNGS["q2_${name}_npernode${npernode}"]="$HOME/hw3/eva/output/q2/${name}_npernode${npernode}.png"
-    done
-done
+# # q2_v3
+# for name in imbalance_c100000 medium_c200000 large_c1000000 large_c2000000 large_c4000000; do
+#     for npernode in 1 2 4 8 12 16; do
+#         OUTPUT_PNGS["q2_v3_${name}_npernode${npernode}"]="$HOME/hw3/eva/output/q2_v3/${name}_npernode${npernode}.png"
+#     done
+# done
 
-# q2_new
-for name in imbalance_c100000 medium_c200000 large_c1000000 large_c2000000 large_c4000000; do
-    for npernode in 1 2 4 8 12 16; do
-        OUTPUT_PNGS["q2_new_${name}_npernode${npernode}"]="$HOME/hw3/eva/output/q2_new/${name}_npernode${npernode}.png"
-    done
-done
+# # q3_v3
+# for name in large_c1000000 large_c2000000 large_c4000000; do
+#     for npernode in 1 2 3 4 6 8 12 16; do
+#         OUTPUT_PNGS["q3_v3_${name}_npernode${npernode}"]="$HOME/hw3/eva/output/q3_v3/${name}_npernode${npernode}.png"
+#     done
+# done
 
 echo "============================================"
 echo " Correctness Check vs Golden"

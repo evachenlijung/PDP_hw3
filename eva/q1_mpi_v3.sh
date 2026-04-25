@@ -1,14 +1,13 @@
 #!/bin/bash
 
-mpicc renderer_mpi_new.c -o renderer_mpi_new -lm -march=native
-for i in 1 2 3; do scp renderer_mpi_new rdma$i:~/hw3/eva/; done
+mpicc renderer_mpi_v3_zbuffer.c -o renderer_mpi_v3_zbuffer -lm -march=native
+for i in 1 2 3; do scp renderer_mpi_v3_zbuffer rdma$i:~/hw3/eva/; done
 
 mkdir -p ~/hw3/eva/output/mpi
-mkdir -p ~/hw3/eva/logs/q1_mpi_new
+mkdir -p ~/hw3/eva/logs/q1_mpi_v3
 
-Q1_MPI_CSV=~/hw3/eva/logs/q1_mpi/q1_mpi_new.csv
-echo "testcase,npernode,nprocs,image_size,total_weight,target_per_proc,scatter_time,avg_render_time,composite_time,total_time,img_size_vs_base,weight_vs_base,time_vs_base" > $Q1_MPI_CSV
-
+Q1_MPI_CSV=~/hw3/eva/logs/q1_mpi/q1_mpi_v3.csv
+echo "testcase,npernode,nprocs,image_size,total_weight,target_per_proc,scatter_time,min_render_time,max_render_time,avg_render_time,composite_time,total_time,img_vs_base,wt_vs_base,time_vs_base" > $Q1_MPI_CSV
 TESTCASES=(
     "../testcases/imbalance_c100000.bin"
     "../testcases/medium_c200000.bin"
@@ -32,7 +31,7 @@ for bin in "${TESTCASES[@]}"; do
     for npernode in "${NPERNODE_LIST[@]}"; do
         nprocs=$((npernode * 4))
         outpng=~/hw3/eva/output/mpi/${name}_npernode${npernode}.png
-        logfile=~/hw3/eva/logs/q1_mpi_new/${name}_npernode${npernode}.log
+        logfile=~/hw3/eva/logs/q1_mpi_v3/${name}_npernode${npernode}.log
 
         UCX_TLS=rc,sm,self \
         UCX_NET_DEVICES=rocep23s0:1 \
@@ -42,7 +41,7 @@ for bin in "${TESTCASES[@]}"; do
         -npernode $npernode \
         --mca pml ucx \
         --mca btl ^tcp \
-        ./renderer_mpi_new $bin $outpng \
+        ./renderer_mpi_v3_zbuffer $bin $outpng \
         2>&1 | tee $logfile
 
         image_size=$(grep "rank0: magic=CRDR" $logfile | head -1 | sed 's/.*image \([0-9]*\)x\([0-9]*\).*/\1 \2/' | awk '{print $1 * $2}')
@@ -82,6 +81,9 @@ for bin in "${TESTCASES[@]}"; do
         total=$(echo "$scatter $avg_render $composite" | awk '{printf "%.9f", $1 + $2 + $3}')
         target=$(grep "target per process:" ~/hw3/eva/logs/${name}_npernode${npernode}.log | head -1 | awk '{print $NF}')
 
+        min_render=$(grep "per-rank render time" ~/hw3/eva/logs/${name}_npernode${npernode}.log | tail -n 1 | awk -F'min=' '{print $2}' | awk '{print $1}')
+        max_render=$(grep "per-rank render time" ~/hw3/eva/logs/${name}_npernode${npernode}.log | tail -n 1 | awk -F'max=' '{print $2}' | awk '{print $1}')
+
         img_vs_base=$(echo "$image_size $BASE_IMG" | awk '{printf "%.4f", $1 / $2}')
         wt_vs_base=$(echo "$total_weight $BASE_WT" | awk '{printf "%.4f", $1 / $2}')
         base_scatter=${RAW_SCATTER["${BASE_NAME}_${npernode}"]}
@@ -109,8 +111,8 @@ from collections import defaultdict
 
 warnings.filterwarnings("ignore")
 
-logs_dir = os.path.expanduser("~/hw3/eva/logs/q1_mpi_new")
-csv_path = os.path.join(logs_dir, "q1_mpi_new.csv")
+logs_dir = os.path.expanduser("~/hw3/eva/logs/q1_mpi_v3")
+csv_path = os.path.join(logs_dir, "q1_mpi_v3.csv")
 
 testcase_order = [
     "imbalance_c100000",
@@ -291,7 +293,7 @@ fig.legend(handles, labels, fontsize=8,
            borderaxespad=0)
 
 plt.tight_layout()
-outpath = os.path.join(logs_dir, "q1_mpi_new_plot.png")
+outpath = os.path.join(logs_dir, "q1_mpi_v3_plot.png")
 plt.savefig(outpath, dpi=150, bbox_inches='tight')
 print(f"Plot saved to {outpath}")
 EOF

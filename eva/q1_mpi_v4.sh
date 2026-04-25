@@ -1,14 +1,13 @@
 #!/bin/bash
 
-mpicc renderer_mpi_new.c -o renderer_mpi_new -lm -march=native
-for i in 1 2 3; do scp renderer_mpi_new rdma$i:~/hw3/eva/; done
+mpicc renderer_mpi_v4_reduce.c -o renderer_mpi_v4_reduce -lm -march=native
+for i in 1 2 3; do scp renderer_mpi_v4_reduce rdma$i:~/hw3/eva/; done
 
 mkdir -p ~/hw3/eva/output/mpi
-mkdir -p ~/hw3/eva/logs/q1_mpi_new
+mkdir -p ~/hw3/eva/logs/q1_mpi_v4
 
-Q1_MPI_CSV=~/hw3/eva/logs/q1_mpi/q1_mpi_new.csv
-echo "testcase,npernode,nprocs,image_size,total_weight,target_per_proc,scatter_time,avg_render_time,composite_time,total_time,img_size_vs_base,weight_vs_base,time_vs_base" > $Q1_MPI_CSV
-
+Q1_MPI_CSV=~/hw3/eva/logs/q1_mpi/q1_mpi_v4.csv
+echo "testcase,npernode,nprocs,image_size,total_weight,target_per_proc,scatter_time,min_render_time,max_render_time,avg_render_time,composite_time,total_time,img_vs_base,wt_vs_base,time_vs_base" > $Q1_MPI_CSV
 TESTCASES=(
     "../testcases/imbalance_c100000.bin"
     "../testcases/medium_c200000.bin"
@@ -24,6 +23,7 @@ declare -A RAW_WEIGHT
 declare -A RAW_SCATTER
 declare -A RAW_AVG_RENDER
 declare -A RAW_COMPOSITE
+declare -A RAW_TOTAL
 
 for bin in "${TESTCASES[@]}"; do
 
@@ -32,7 +32,7 @@ for bin in "${TESTCASES[@]}"; do
     for npernode in "${NPERNODE_LIST[@]}"; do
         nprocs=$((npernode * 4))
         outpng=~/hw3/eva/output/mpi/${name}_npernode${npernode}.png
-        logfile=~/hw3/eva/logs/q1_mpi_new/${name}_npernode${npernode}.log
+        logfile=~/hw3/eva/logs/q1_mpi_v4/${name}_npernode${npernode}.log
 
         UCX_TLS=rc,sm,self \
         UCX_NET_DEVICES=rocep23s0:1 \
@@ -42,7 +42,7 @@ for bin in "${TESTCASES[@]}"; do
         -npernode $npernode \
         --mca pml ucx \
         --mca btl ^tcp \
-        ./renderer_mpi_new $bin $outpng \
+        ./renderer_mpi_v4_reduce $bin $outpng \
         2>&1 | tee $logfile
 
         image_size=$(grep "rank0: magic=CRDR" $logfile | head -1 | sed 's/.*image \([0-9]*\)x\([0-9]*\).*/\1 \2/' | awk '{print $1 * $2}')
@@ -50,14 +50,17 @@ for bin in "${TESTCASES[@]}"; do
         target=$(grep "target per process:" $logfile | head -1 | awk '{print $NF}')
         scatter=$(grep "rank0: read+scatter time:" $logfile | awk '{print $(NF-1)}' | awk 'BEGIN{val="0"} $1+0 != 0 {val=$1} END{print val}')
         avg_render=$(grep "per-rank render time" $logfile | awk -F'avg=' '{print $2}')
-        composite=$(grep "rank0: composite+write time:" $logfile | awk '{print $(NF-1)}' | awk 'BEGIN{val="0"} $1+0 != 0 {val=$1} END{print val}')
-        total=$(echo "$scatter $avg_render $composite" | awk '{printf "%.9f", $1 + $2 + $3}')
+        composite=$(grep "rank0: composite+write time:" $logfile | awk '{print $(NF-1)}')
+        
+        # 🌟 直接抓取 C 程式算好的 Total runtime
+        total=$(grep "Total runtime" $logfile | awk '{print $(NF-1)}')
 
         RAW_IMAGE_SIZE["$name"]=$image_size
         RAW_WEIGHT["$name"]=$total_weight
         RAW_SCATTER["${name}_${npernode}"]=$scatter
         RAW_AVG_RENDER["${name}_${npernode}"]=$avg_render
         RAW_COMPOSITE["${name}_${npernode}"]=$composite
+        RAW_TOTAL["${name}_${npernode}"]=$total
 
         echo "  image_size=$image_size total_weight=$total_weight target=$target scatter=$scatter avg_render=$avg_render composite=$composite total=$total"
         echo ""
@@ -74,23 +77,27 @@ for bin in "${TESTCASES[@]}"; do
     for npernode in "${NPERNODE_LIST[@]}"; do
         nprocs=$((npernode * 4))
 
+        logfile=~/hw3/eva/logs/q1_mpi_v4/${name}_npernode${npernode}.log
+
         image_size=${RAW_IMAGE_SIZE[$name]}
         total_weight=${RAW_WEIGHT[$name]}
         scatter=${RAW_SCATTER["${name}_${npernode}"]}
         avg_render=${RAW_AVG_RENDER["${name}_${npernode}"]}
         composite=${RAW_COMPOSITE["${name}_${npernode}"]}
-        total=$(echo "$scatter $avg_render $composite" | awk '{printf "%.9f", $1 + $2 + $3}')
-        target=$(grep "target per process:" ~/hw3/eva/logs/${name}_npernode${npernode}.log | head -1 | awk '{print $NF}')
+        total=${RAW_TOTAL["${name}_${npernode}"]}
+        
+        target=$(grep "target per process:" $logfile | head -1 | awk '{print $NF}')
+        min_render=$(grep "per-rank render time" $logfile | awk -F'min=' '{print $2}' | awk -F' ' '{print $1}')
+        max_render=$(grep "per-rank render time" $logfile | awk -F'max=' '{print $2}' | awk -F' ' '{print $1}')
 
         img_vs_base=$(echo "$image_size $BASE_IMG" | awk '{printf "%.4f", $1 / $2}')
         wt_vs_base=$(echo "$total_weight $BASE_WT" | awk '{printf "%.4f", $1 / $2}')
-        base_scatter=${RAW_SCATTER["${BASE_NAME}_${npernode}"]}
-        base_avg=${RAW_AVG_RENDER["${BASE_NAME}_${npernode}"]}
-        base_comp=${RAW_COMPOSITE["${BASE_NAME}_${npernode}"]}
-        base_total_time=$(echo "$base_scatter $base_avg $base_comp" | awk '{printf "%.9f", $1 + $2 + $3}')
+        
+        # 🌟 基準時間也直接向陣列拿真正的 Total，不再手動相加
+        base_total_time=${RAW_TOTAL["${BASE_NAME}_${npernode}"]}
         time_vs_base=$(echo "$total $base_total_time" | awk '{printf "%.4f", $1 / $2}')
 
-        echo "$name,$npernode,$nprocs,$image_size,$total_weight,$target,$scatter,$avg_render,$composite,$total,$img_vs_base,$wt_vs_base,$time_vs_base" >> $Q1_MPI_CSV
+        echo "$name,$npernode,$nprocs,$image_size,$total_weight,$target,$scatter,$min_render,$max_render,$avg_render,$composite,$total,$img_vs_base,$wt_vs_base,$time_vs_base" >> $Q1_MPI_CSV    
     done
 done
 
@@ -109,8 +116,8 @@ from collections import defaultdict
 
 warnings.filterwarnings("ignore")
 
-logs_dir = os.path.expanduser("~/hw3/eva/logs/q1_mpi_new")
-csv_path = os.path.join(logs_dir, "q1_mpi_new.csv")
+logs_dir = os.path.expanduser("~/hw3/eva/logs/q1_mpi_v4")
+csv_path = os.path.join(logs_dir, "q1_mpi_v4.csv")
 
 testcase_order = [
     "imbalance_c100000",
@@ -154,8 +161,9 @@ for name in testcase_order:
         scatter      = grep_nonzero(r"rank0: read\+scatter time: ([\d.]+)", content)
         avg_render   = grep(r"avg=([\d.]+)", content)
         composite    = grep_nonzero(r"rank0: composite\+write time: ([\d.]+)", content)
-        total = f"{float(scatter)+float(avg_render)+float(composite):.9f}" \
-                if scatter and avg_render and composite else ""
+        
+        # 🌟 修正 Python 的解析邏輯：改用 Regex 直接抓 Total runtime，停止手動相加！
+        total = grep_nonzero(r"Total runtime.*: ([\d.]+)", content)
 
         rows.append({
             "testcase": name, "npernode": npernode, "nprocs": nprocs,
@@ -291,7 +299,7 @@ fig.legend(handles, labels, fontsize=8,
            borderaxespad=0)
 
 plt.tight_layout()
-outpath = os.path.join(logs_dir, "q1_mpi_new_plot.png")
+outpath = os.path.join(logs_dir, "q1_mpi_v4_plot.png")
 plt.savefig(outpath, dpi=150, bbox_inches='tight')
 print(f"Plot saved to {outpath}")
 EOF
