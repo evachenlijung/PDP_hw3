@@ -1,73 +1,68 @@
-# #!/bin/bash
+#!/bin/bash
 
-# # ==========================================
-# # 1. 編譯與分發執行檔
-# # ==========================================
-# mpicc renderer_mpi.c -o renderer_mpi -lm -march=native
-# for i in 1 2 3; do scp renderer_mpi rdma$i:~/hw3/eva/; done
+mpicc renderer_mpi_v4_reduce.c -o renderer_mpi_v4_reduce -lm -march=native
+for i in 1 2 3; do scp renderer_mpi_v4_reduce rdma$i:~/hw3/eva/; done
 
-# # 建立輸出與日誌目錄
-# mkdir -p ~/hw3/eva/output/q3
-# mkdir -p ~/hw3/eva/logs/q3
+# 建立輸出與日誌目錄
+mkdir -p ~/hw3/eva/output/q3
+mkdir -p ~/hw3/eva/logs/q3
 
-# Q3_CSV=~/hw3/eva/logs/q3/q3_weak_scaling.csv
-# # 🌟 更新 CSV 標頭：加入 avg_render_time
-# echo "testcase,npernode,nprocs,total_runtime,avg_render_time" > $Q3_CSV
+Q3_CSV=~/hw3/eva/logs/q3/q3_weak_scaling.csv
+# 🌟 更新 CSV 標頭：加入 avg_render_time
+echo "testcase,npernode,nprocs,total_time,avg_render_time" > $Q3_CSV
 
-# # 僅針對三個 large 測資進行 Weak Scaling 測試
-# TESTCASES=(
-#     "large_c1000000"
-#     "large_c2000000"
-#     "large_c4000000"
-# )
-
-# # ==========================================
-# # 2. 執行 MPI 測試並收集數據
-# # ==========================================
-# for name in "${TESTCASES[@]}"; do
-#     bin="../testcases/${name}.bin"
-
-#     # 根據不同的測資大小，精準指派對應的 npernode 陣列
-#     case $name in
-#         "large_c1000000") NPERNODE_LIST=(1 2 3 4) ;;
-#         "large_c2000000") NPERNODE_LIST=(2 4 6 8) ;;
-#         "large_c4000000") NPERNODE_LIST=(4 8 12 16) ;;
-#     esac
-
-#     for npernode in "${NPERNODE_LIST[@]}"; do
-#         nprocs=$((npernode * 4))
-#         outpng=~/hw3/eva/output/q3/${name}_npernode${npernode}.png
-#         logfile=~/hw3/eva/logs/q3/${name}_npernode${npernode}.log
-
-#         echo "=== Running: $name npernode=$npernode (total $nprocs procs) ==="
-
-#         UCX_TLS=rc,sm,self \
-#         UCX_NET_DEVICES=rocep23s0:1 \
-#         mpirun \
-#           --hostfile hosts \
-#           -npernode $npernode \
-#           --mca pml ucx \
-#           --mca btl ^tcp \
-#           ./renderer_mpi $bin $outpng \
-#           2>&1 | tee $logfile
-
-#         # 抓取 Total Runtime 與 Local Render Time
-#         total=$(grep "Total runtime" $logfile | awk '{print $(NF-1)}')
-#         avg_render=$(grep "per-rank render time" $logfile | awk -F'avg=' '{print $2}')
-
-#         # 寫入 CSV
-#         echo "$name,$npernode,$nprocs,$total,$avg_render" >> $Q3_CSV
-#         echo "  total=$total avg_render=$avg_render"
-#         echo ""
-#     done
-# done
-
-# echo "=== Done. Results written to $Q3_CSV ==="
-# echo "=== Generating Weak Scaling Plots... ==="
+# 僅針對三個 large 測資進行 Weak Scaling 測試
+TESTCASES=(
+    "large_c1000000"
+    "large_c2000000"
+    "large_c4000000"
+)
 
 # ==========================================
-# 3. Python 雙子圖視覺化 (Heredoc 語法)
+# 2. 執行 MPI 測試並收集數據
 # ==========================================
+for name in "${TESTCASES[@]}"; do
+    bin="../testcases/${name}.bin"
+
+    # 根據不同的測資大小，精準指派對應的 npernode 陣列
+    case $name in
+        "large_c1000000") NPERNODE_LIST=(1 2 3 4) ;;
+        "large_c2000000") NPERNODE_LIST=(2 4 6 8) ;;
+        "large_c4000000") NPERNODE_LIST=(4 8 12 16) ;;
+    esac
+
+    for npernode in "${NPERNODE_LIST[@]}"; do
+        nprocs=$((npernode * 4))
+        outpng=~/hw3/eva/output/q3/${name}_npernode${npernode}.png
+        logfile=~/hw3/eva/logs/q3/${name}_npernode${npernode}.log
+
+        echo "=== Running: $name npernode=$npernode (total $nprocs procs) ==="
+
+        UCX_TLS=rc,sm,self \
+        UCX_NET_DEVICES=rocep23s0:1 \
+        mpirun \
+          --hostfile hosts \
+          -npernode $npernode \
+          --mca pml ucx \
+          --mca btl ^tcp \
+          ./renderer_mpi_v4_reduce $bin $outpng \
+          2>&1 | tee $logfile
+
+        # 抓取 Total Runtime 與 Local Render Time
+        total=$(grep "Total runtime" $logfile | awk '{print $(NF-1)}')
+        avg_render=$(grep "per-rank render time" $logfile | awk -F'avg=' '{print $2}')
+
+        # 寫入 CSV
+        echo "$name,$npernode,$nprocs,$total,$avg_render" >> $Q3_CSV
+        echo "  total=$total avg_render=$avg_render"
+        echo ""
+    done
+done
+
+echo "=== Done. Results written to $Q3_CSV ==="
+echo "=== Generating Weak Scaling Plots... ==="
+
+
 python3 << 'EOF'
 import os
 import csv
@@ -108,7 +103,7 @@ try:
                 np_node = int(row["npernode"])
                 try:
                     data[name][np_node] = {
-                        "total": float(row["total_runtime"]) if row.get("total_runtime") else 0.0,
+                        "total": float(row["total_time"]) if row.get("total_time") else 0.0,
                         "render": float(row["avg_render_time"]) if row.get("avg_render_time") else 0.0
                     }
                 except ValueError:
@@ -136,7 +131,7 @@ label_configs = {
         (45, 0, 'center', 'left'),    # 點0：往右推到空白處
         (45, 0, 'center', 'left'),    # 點1：往右推到空白處
         (45, 0, 'center', 'left'),    # 點2：往右推到空白處
-        (-45, 0, 'center', 'right')   # 點3：最後一點往左推，避免超出圖表右邊界！
+        (0, 40, 'bottom', 'center')
     ],
     "large_c4000000": [ 
         (0, 45, 'bottom', 'center'),  
@@ -194,8 +189,8 @@ for metric in metrics:
                     xy=(x_positions[i], val),
                     xytext=(x_off, y_off),
                     textcoords="offset points",
-                    ha=h_align, va=v_align, fontsize=11,
-                    color=color, fontweight='bold',
+                    ha=h_align, va=v_align, fontsize=14,
+                    color=color, fontweight='bold', zorder=10,
                     path_effects=[pe.withStroke(linewidth=3, foreground="white")],
                     # 🌟 加上引導線：即使文字被推到 45 像素外，也能清楚指回原本的資料點
                     arrowprops=dict(arrowstyle="-", color=color, lw=1.5, alpha=0.5, shrinkA=0, shrinkB=5)

@@ -1,53 +1,6 @@
-# #!/bin/bash
+#!/bin/bash
 
-# mpicc renderer_mpi.c -o renderer_mpi -lm -march=native
-# for i in 1 2 3; do scp renderer_mpi rdma$i:~/hw3/eva/; done
-
-# mkdir -p ~/hw3/eva/output/q2
-# mkdir -p ~/hw3/eva/logs/q2
-
-# Q2_CSV=~/hw3/eva/logs/q2/q2_strong_scaling.csv
-# echo "testcase,npernode,nprocs,total_runtime" > $Q2_CSV
-
-# TESTCASES=(
-#     "../testcases/imbalance_c100000.bin"
-#     "../testcases/medium_c200000.bin"
-#     "../testcases/large_c1000000.bin"
-#     "../testcases/large_c2000000.bin"
-#     "../testcases/large_c4000000.bin"
-# )
-
-# NPERNODE_LIST=(1 2 4 8 12 16)
-
-# for bin in "${TESTCASES[@]}"; do
-#     name=$(basename $bin .bin)
-
-#     for npernode in "${NPERNODE_LIST[@]}"; do
-#         nprocs=$((npernode * 4))
-#         outpng=~/hw3/eva/output/q2/${name}_npernode${npernode}.png
-#         logfile=~/hw3/eva/logs/q2/${name}_npernode${npernode}.log
-
-#         echo "=== Running: $name npernode=$npernode (total $nprocs procs) ==="
-
-#         UCX_TLS=rc,sm,self \
-#         UCX_NET_DEVICES=rocep23s0:1 \
-#         mpirun \
-#           --hostfile hosts \
-#           -npernode $npernode \
-#           --mca pml ucx \
-#           --mca btl ^tcp \
-#           ./renderer_mpi $bin $outpng \
-#           2>&1 | tee $logfile
-
-#         total=$(grep "Total runtime" $logfile | awk '{print $(NF-1)}')
-
-#         echo "$name,$npernode,$nprocs,$total" >> $Q2_CSV
-#         echo "  total_runtime=$total"
-#         echo ""
-#     done
-# done
-
-# echo "=== Done. Results written to $Q2_CSV ==="
+mkdir -p ~/hw3/eva/logs/q2
 
 python3 << 'EOF'
 import os
@@ -61,8 +14,8 @@ from collections import defaultdict
 
 warnings.filterwarnings("ignore")
 
-logs_dir = os.path.expanduser("~/hw3/eva/logs/q2")
-csv_path = os.path.join(logs_dir, "q2_strong_scaling.csv")
+logs_dir = os.path.expanduser("~/hw3/eva/logs/q1_mpi")
+csv_path = os.path.join(logs_dir, "q1_mpi.csv")
 
 testcase_order = [
     "imbalance_c100000",
@@ -80,7 +33,7 @@ with open(csv_path) as f:
         name    = row["testcase"]
         np_node = int(row["npernode"])
         try:
-            data[name][np_node] = float(row["total_runtime"]) if row["total_runtime"] else 0.0
+            data[name][np_node] = float(row["total_time"]) if row["total_time"] else 0.0
         except ValueError:
             continue
 
@@ -146,14 +99,16 @@ for xi, np_node in enumerate(NPERNODE_LIST):
     for rank_idx, (t_val, speedup, color) in enumerate(col_points):
         y_pos = 10 ** (label_log_top - step * rank_idx)
         if xi == 1:
-            x_offset = 0.4
+            x_offset = 1
+        elif xi == 2:
+            x_offset = 1
         else:
             x_offset = 0.0
         ax.annotate(
             f"{t_val:.6f}s\n{speedup:.2f}x",
             xy=(x[xi], t_val),
             xytext=(x[xi] + x_offset, y_pos),
-            ha='center', va='top', fontsize=8.5,
+            ha='center', va='top', fontsize=11,
             color=color, fontweight='bold',
             path_effects=[pe.withStroke(linewidth=2, foreground="white")],
             arrowprops=dict(arrowstyle="-", color=color, lw=0.4, alpha=0.5),
@@ -166,8 +121,9 @@ fig.legend(handles, labels, fontsize=9,
            framealpha=0.9,
            borderaxespad=0)
 
+out_dir = os.path.expanduser("~/hw3/eva/logs/q2")
+outpath = os.path.join(out_dir, "q2_strong_scaling.png")
 plt.tight_layout()
-outpath = os.path.join(logs_dir, "q2_strong_scaling.png")
 plt.savefig(outpath, dpi=150, bbox_inches='tight')
 print(f"Plot saved to {outpath}")
 EOF

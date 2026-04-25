@@ -270,15 +270,6 @@ int main(int argc, char **argv) {
         fprintf(stderr, "per-rank render time (s): min=%.6f max=%.6f avg=%.6f\n", min_time, max_time, avg_time);
     }
 
-    // uint64_t *recvbuf = NULL;
-    // if(rank == 0){
-    //     recvbuf = (uint64_t *)malloc(npix * sizeof(uint64_t) * nprocs);
-    //     if(!recvbuf){ perror("failed malloc recvbuf"); MPI_Abort(MPI_COMM_WORLD, 1); }
-    // }
-    // MPI_Gather(local_state, npix, MPI_UINT64_T, recvbuf, npix, MPI_UINT64_T, 0, MPI_COMM_WORLD);
-
-    /* 用 MPI_Reduce 的 MPI_MAX 操作直接在所有 rank 上取最大 z 值
-    * 不需要收集所有資料到 rank 0 再比較 */
     uint64_t *final_state = NULL;
     if (rank == 0) {
         final_state = aligned_calloc64(npix * sizeof(uint64_t));
@@ -289,19 +280,7 @@ int main(int argc, char **argv) {
 
     // Root gathers/receives buffers in rank order and composites onto acc_img/acc_alpha
     if (rank == 0) {        
-        // uint64_t *final_state = aligned_calloc64(npix * sizeof(uint64_t));
         unsigned char *pixels = (unsigned char *)malloc(npix * 3);
-        // if(!final_state || !pixels){ perror("malloc finals"); MPI_Abort(MPI_COMM_WORLD, 1); }
-
-        // for (int p = 0; p < nprocs; ++p){
-        //     uint64_t *src = recvbuf + (uint64_t)npix * p;
-        //     for (size_t i = 0; i < npix; ++i) {
-        //         if((uint32_t)(src[i] >> 32) > (uint32_t)(final_state[i] >> 32)){
-        //             final_state[i] = src[i];
-        //         }
-        //     }
-        // }
-
         for(size_t i = 0; i < npix; ++i){
             uint32_t rgb = (uint32_t)(final_state[i] & 0x00FFFFFFu);
             pixels[i*3 + 0] = (unsigned char)((rgb >> 16) & 0xFFu);
@@ -320,7 +299,6 @@ int main(int argc, char **argv) {
         fprintf(stderr, "Total runtime (comp_end - io_start): %.6f s\n", comp_end-io_start);
         free(pixels);
         free(final_state);
-        // free(recvbuf); 
         fprintf(stderr, "rank0: Wrote PNG %s\n", outpath);
     } 
 

@@ -11,8 +11,9 @@ from collections import defaultdict
 warnings.filterwarnings("ignore")
 
 serial_csv = os.path.expanduser("~/hw3/eva/logs/q1_serial/q1_serial.csv")
-q2_csv     = os.path.expanduser("~/hw3/eva/logs/q2/q2_strong_scaling.csv")
+q1_mpi_csv = os.path.expanduser("~/hw3/eva/logs/q1_mpi/q1_mpi.csv")
 logs_dir   = os.path.expanduser("~/hw3/eva/logs/q4")
+os.makedirs(logs_dir, exist_ok=True)
 
 testcase_order = [
     "imbalance_c100000",
@@ -30,13 +31,13 @@ with open(serial_csv) as f:
         serial_time[row["testcase"]] = float(row["total_render_time"])
 
 par_data = defaultdict(dict)
-with open(q2_csv) as f:
+with open(q1_mpi_csv) as f:
     reader = csv.DictReader(f)
     for row in reader:
         name    = row["testcase"]
         np_node = int(row["npernode"])
         try:
-            par_data[name][np_node] = float(row["total_runtime"]) if row["total_runtime"] else 0.0
+            par_data[name][np_node] = float(row["total_time"]) if row["total_time"] else 0.0
         except ValueError:
             continue
 
@@ -105,7 +106,7 @@ def plot_panel(ax, metric, ylabel, title, ideal_label, ideal_val_fn, val_fmt):
         label_log_bottom = log_max - (log_max - log_min) * 0.40
         step = (label_log_top - label_log_bottom) / (len(col_points) - 1) if len(col_points) > 1 else 0
 
-        x_offset = 0.4 if xi == 1 else 0.0
+        x_offset = 1 if xi == 1 or xi == 2 else 0.0
 
         for rank_idx, (val, t_par, color) in enumerate(col_points):
             y_pos = 10 ** (label_log_top - step * rank_idx)
@@ -113,7 +114,7 @@ def plot_panel(ax, metric, ylabel, title, ideal_label, ideal_val_fn, val_fmt):
                 f"{t_par:.6f}s\n{val_fmt.format(val)}",
                 xy=(x[xi], val),
                 xytext=(x[xi] + x_offset, y_pos),
-                ha='center', va='top', fontsize=8,
+                ha='center', va='top', fontsize=11,
                 color=color, fontweight='bold',
                 path_effects=[pe.withStroke(linewidth=2, foreground="white")],
                 arrowprops=dict(arrowstyle="-", color=color, lw=0.4, alpha=0.5),

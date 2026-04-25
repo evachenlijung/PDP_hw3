@@ -1,6 +1,0 @@
-testcase,total_render_time
-imbalance_c100000,1.749837
-medium_c200000,2.164876
-large_c1000000,6.552049
-large_c2000000,13.120314
-large_c4000000,26.971868

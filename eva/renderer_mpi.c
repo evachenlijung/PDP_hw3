@@ -107,13 +107,9 @@ int main(int argc, char **argv) {
                 weights[i] = w;
                 totalw += w;
             }
-            fprintf(stderr, "total weight: %.2f\n", totalw); 
             double target = totalw / (double)nprocs;
-            fprintf(stderr, "target per process: %.2f\n", target); 
-            // 每個圓形的 weights == r*r, 加總到 totalw 再分配給 nporc 個 processes 工作量
             uint64_t idx = 0;
             for (int p = 0; p < nprocs; ++p) {
-                // accumulator
                 double acc = 0.0;
                 uint64_t start = idx;
                 while (idx < count && (acc < target || (count - idx) < (uint64_t)(nprocs - p))) {
@@ -284,7 +280,6 @@ int main(int argc, char **argv) {
         comp_end = MPI_Wtime();
         comp_elapsed = comp_end - comp_start;
         fprintf(stderr, "rank0: composite+write time: %.6f s\n", comp_elapsed);
-        fprintf(stderr, "Total runtime (comp_end - io_start): %.6f s\n", comp_end-io_start);
         free(pixels);
         free(acc_img);
         free(tmp_img);
