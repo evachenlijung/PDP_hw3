@@ -6,21 +6,20 @@ for i in 1 2 3; do scp renderer_mpi_v4_reduce rdma$i:~/hw3/eva/; done
 mkdir -p ~/hw3/eva/output/mpi
 mkdir -p ~/hw3/eva/logs/q1_mpi
 
-Q1_MPI_CSV=~/hw3/eva/logs/q1_mpi/q1_mpi.csv
+Q1_MPI_CSV=~/hw3/eva/logs/q1_mpi/q1_mpi_scatter.csv
 
 echo "testcase,npernode,nprocs,image_size,total_weight,target_per_proc,scatter_time,min_render_time,max_render_time,avg_render_time,composite_time,total_time" > $Q1_MPI_CSV
 
 TESTCASES=(
-    # "../testcases/imbalance_c100000.bin"
-    # "../testcases/medium_c200000.bin"
-    # "../testcases/large_c1000000.bin"
-    # "../testcases/large_c2000000.bin"
+    "../testcases/imbalance_c100000.bin"
+    "../testcases/medium_c200000.bin"
+    "../testcases/large_c1000000.bin"
+    "../testcases/large_c2000000.bin"
     "../testcases/large_c4000000.bin"
 )
 
-# NPERNODE_LIST=(1 2 4 8 12 16)
-
-NPERNODE_LIST=(2)
+# 🌟 1. 將測試區間聚焦在發生瓶頸的 12 到 16
+NPERNODE_LIST=(12 13 14 15 16)
 
 declare -A RAW_IMAGE_SIZE
 declare -A RAW_WEIGHT
@@ -88,7 +87,7 @@ from collections import defaultdict
 warnings.filterwarnings("ignore")
 
 logs_dir = os.path.expanduser("~/hw3/eva/logs/q1_mpi")
-csv_path = os.path.join(logs_dir, "q1_mpi.csv")
+csv_path = os.path.join(logs_dir, "q1_mpi_scatter.csv")
 
 testcase_order = [
     "imbalance_c100000",
@@ -97,7 +96,8 @@ testcase_order = [
     "large_c2000000",
     "large_c4000000",
 ]
-NPERNODE_LIST = [1, 2, 4, 8, 12, 16]
+# 🌟 同步修改 Python 端的 NPERNODE_LIST
+NPERNODE_LIST = [12, 13, 14, 15, 16]
 
 # --- 1. 從所有 Log 檔動態解析數據 ---
 rows = []
@@ -136,14 +136,13 @@ for name in testcase_order:
             "total_time": total,
         })
 
-# --- 2. 把乾淨無重複的資料寫入 CSV ---
+# --- 2. 寫入 CSV ---
 fieldnames = ["testcase","npernode","nprocs","image_size","total_weight",
               "target_per_proc","scatter_time","min_render_time","max_render_time","avg_render_time","composite_time","total_time"]
 with open(csv_path, "w", newline="") as f:
     writer = csv.DictWriter(f, fieldnames=fieldnames)
     writer.writeheader()
     writer.writerows(rows)
-print(f"CSV written to {csv_path}")
 
 # --- 3. 讀取 CSV 準備畫圖 ---
 data = defaultdict(dict)
@@ -157,8 +156,6 @@ with open(csv_path) as f:
                 "image_size":   int(row["image_size"])        if row["image_size"]        else 0,
                 "total_weight": float(row["total_weight"])    if row["total_weight"]       else 0.0,
                 "scatter":      float(row["scatter_time"])    if row["scatter_time"]       else 0.0,
-                "avg_render":   float(row["avg_render_time"]) if row["avg_render_time"]    else 0.0,
-                "composite":    float(row["composite_time"])  if row["composite_time"]     else 0.0,
             }
         except ValueError:
             continue
@@ -178,78 +175,79 @@ tc_colors["large_c1000000"] = "#4d4d4d"
 
 x = np.array(NPERNODE_LIST, dtype=float)
 
-time_keys   = ["scatter",               "avg_render",          "composite"]
-time_labels = ["Read+Scatter Time (s)", "Avg Render Time (s)", "Composite+Write Time (s)"]
-time_fmt    = ["{:.6f}s",               "{:.6f}s",             "{:.6f}s"]
-markers     = ["^", "D", "P"]
+# 🌟 2. 改為只畫 1 張圖，專注於 Scatter Time
+fig, ax = plt.subplots(figsize=(10, 8))
+fig.suptitle("MPI Renderer: Read+Scatter Time (npernode 12-16)", fontsize=16, fontweight='bold', y=0.96)
 
-fig, axes = plt.subplots(1, 3, figsize=(24, 9))
-fig.suptitle("MPI Renderer: Timing Breakdown vs npernode by Testcase", fontsize=14)
+tkey = "scatter"
+tlabel = "Read+Scatter Time (s)"
+fmt = "{:.4f}s"
+marker = "^"
 
-for col, (ax, tkey, tlabel, marker, fmt) in enumerate(zip(axes, time_keys, time_labels, markers, time_fmt)):
+all_times = [data[n][np_node][tkey] for n in names for np_node in NPERNODE_LIST if data[n][np_node][tkey] > 0]
+max_time = max(all_times)
+min_time = min(all_times)
 
-    all_times = [data[n][np_node][tkey] for n in names for np_node in NPERNODE_LIST if data[n][np_node][tkey] > 0]
-    if not all_times:
-        continue
-    max_time = max(all_times)
-    min_time = min(all_times)
+for n in names:
+    color  = tc_colors[n]
+    img_g  = data[n][16]["image_size"]   / base_img if base_img else 0
+    wt_g   = data[n][16]["total_weight"] / base_wt  if base_wt  else 0
+    label  = f"{n}\n(img {img_g:.2f}× wt {wt_g:.2f}×)"
+    times  = [data[n][np_node][tkey] for np_node in NPERNODE_LIST]
+    
+    ax.plot(x, times, marker=marker, color=color, linewidth=2.5, markersize=9, label=label, zorder=4)
 
+ax.set_yscale('log')
+ax.set_ylim(min_time * 0.4, max_time * 4.0)
+ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f'{y:.3f}'))
+ax.set_xticks(x)
+ax.set_xticklabels([str(int(n)) for n in NPERNODE_LIST], fontsize=11)
+ax.set_xlim(min(NPERNODE_LIST) - 0.5, max(NPERNODE_LIST) + 0.5)
+ax.set_xlabel("Processes per Node", fontsize=13)
+ax.set_ylabel("Time (s) [Log Scale]", fontsize=13)
+ax.set_title(tlabel, fontsize=14, pad=10)
+ax.grid(axis='y', which='both', linestyle='--', alpha=0.4, zorder=0)
+
+log_max = np.log10(max_time * 4.0)
+log_min = np.log10(min_time * 0.4)
+
+for xi, np_node in enumerate(NPERNODE_LIST):
+    col_points = []
     for n in names:
-        color  = tc_colors[n]
-        img_g  = data[n][16]["image_size"]   / base_img if base_img else 0
-        wt_g   = data[n][16]["total_weight"] / base_wt  if base_wt  else 0
-        label  = f"{n}\n(img {img_g:.2f}× wt {wt_g:.2f}×)"
-        times  = [data[n][np_node][tkey] for np_node in NPERNODE_LIST]
-        ax.plot(x, times, marker=marker, color=color, linewidth=2, markersize=7, label=label, zorder=4)
+        t_val   = data[n][np_node][tkey]
+        # 🌟 3. 將倍率基準點 (Base) 改為 npernode=12
+        base_t  = data[n][12][tkey] 
+        speedup = base_t / t_val if t_val > 0 else 0
+        color   = tc_colors[n]
+        col_points.append((t_val, speedup, color))
 
-    ax.set_yscale('log')
-    ax.set_ylim(min_time * 0.4, max_time * 4.0)
-    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f'{y:.3f}'))
-    ax.set_xticks(x)
-    ax.set_xticklabels([str(int(n)) for n in NPERNODE_LIST], fontsize=9)
-    ax.set_xlim(0, max(NPERNODE_LIST) * 1.1)
-    ax.set_xlabel("Processes per Node", fontsize=10)
-    ax.set_ylabel("Time (s)", fontsize=11)
-    ax.set_title(tlabel, fontsize=12)
-    ax.grid(axis='y', which='both', linestyle='--', alpha=0.4, zorder=0)
+    col_points.sort(key=lambda p: p[0], reverse=True)
 
-    log_max = np.log10(max_time * 4.0)
-    log_min = np.log10(min_time * 0.4)
+    label_log_top    = log_max - (log_max - log_min) * 0.01
+    label_log_bottom = log_max - (log_max - log_min) * 0.45
+    step = (label_log_top - label_log_bottom) / (len(col_points) - 1) if len(col_points) > 1 else 0
 
-    for xi, np_node in enumerate(NPERNODE_LIST):
-        col_points = []
-        for n in names:
-            t_val   = data[n][np_node][tkey]
-            base_t  = data[n][1][tkey]
-            speedup = base_t / t_val if t_val > 0 else 0
-            color   = tc_colors[n]
-            col_points.append((t_val, speedup, color))
+    for rank_idx, (t_val, speedup, color) in enumerate(col_points):
+        y_pos = 10 ** (label_log_top - step * rank_idx)
+        # 針對密集處微調標籤避免重疊
+        if xi == 1 or xi == 2:
+            y_pos = 10 ** (np.log10(y_pos) - (log_max - log_min) * 0.03)
+            
+        ax.annotate(
+            f"{fmt.format(t_val)}\n{speedup:.2f}x",
+            xy=(x[xi], t_val),
+            xytext=(x[xi], y_pos),
+            ha='center', va='top', fontsize=11,
+            color=color, fontweight='bold', zorder=10,
+            path_effects=[pe.withStroke(linewidth=3, foreground="white")],
+            arrowprops=dict(arrowstyle="-", color=color, lw=0.5, alpha=0.6, zorder=5),
+        )
 
-        col_points.sort(key=lambda p: p[0], reverse=True)
-
-        label_log_top    = log_max - (log_max - log_min) * 0.01
-        label_log_bottom = log_max - (log_max - log_min) * 0.45
-        step = (label_log_top - label_log_bottom) / (len(col_points) - 1) if len(col_points) > 1 else 0
-
-        for rank_idx, (t_val, speedup, color) in enumerate(col_points):
-            y_pos = 10 ** (label_log_top - step * rank_idx)
-            if xi == 1:
-                y_pos = 10 ** (np.log10(y_pos) - (log_max - log_min) * 0.06)
-            ax.annotate(
-                f"{fmt.format(t_val)}\n{speedup:.2f}x",
-                xy=(x[xi], t_val),
-                xytext=(x[xi], y_pos),
-                ha='center', va='top', fontsize=11,
-                color=color, fontweight='bold', zorder=10,
-                path_effects=[pe.withStroke(linewidth=3, foreground="white")],
-                arrowprops=dict(arrowstyle="-", color=color, lw=0.4, alpha=0.5, zorder=5),
-            )
-
-handles, labels = axes[-1].get_legend_handles_labels()
-fig.legend(handles, labels, fontsize=8, loc="center left", bbox_to_anchor=(1.01, 0.5), framealpha=0.9, borderaxespad=0)
+# 將圖例放到右側外面
+ax.legend(fontsize=10, loc="center left", bbox_to_anchor=(1.02, 0.5), framealpha=0.9, borderaxespad=0)
 
 plt.tight_layout()
-outpath = os.path.join(logs_dir, "q1_mpi_plot.png")
+outpath = os.path.join(logs_dir, "q1_scatter.png")
 plt.savefig(outpath, dpi=150, bbox_inches='tight')
-print(f"Plot saved to {outpath}")
+print(f"✅ Focused plot saved to {outpath}")
 EOF

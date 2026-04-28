@@ -276,10 +276,17 @@ int main(int argc, char **argv) {
     }
 
     /* 直接取每個 pixel 的最大 z-index */
+    // double reduce_start = 0.0, reduce_end=0.0, reduce_elapse=0.0;
+    // if(rank == 0){
+    //     reduce_start = MPI_Wtime();
+    // }
     MPI_Reduce(local_state, final_state, (int)npix, MPI_UINT64_T, MPI_MAX, 0, MPI_COMM_WORLD);
 
     // Root gathers/receives buffers in rank order and composites onto acc_img/acc_alpha
-    if (rank == 0) {        
+    if (rank == 0) {
+        // reduce_end = MPI_Wtime();
+        // reduce_elapse = reduce_end - reduce_start;
+        // fprintf(stderr, "REDUCE TIME: %.6fs\n", reduce_elapse);        
         unsigned char *pixels = (unsigned char *)malloc(npix * 3);
         for(size_t i = 0; i < npix; ++i){
             uint32_t rgb = (uint32_t)(final_state[i] & 0x00FFFFFFu);

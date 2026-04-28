@@ -119,7 +119,7 @@ for i, (t, g) in enumerate(zip(render_times, time_growth)):
     dx, dy = time_offsets[i]
     ax_time.text(i + dx, t + dy,
                  f"{t:.6f}s\n{g:.2f}x",
-                 ha='center', va=time_va[i], fontsize=8,
+                 ha='center', va=time_va[i], fontsize=11,
                  color=color_time, fontweight='bold', linespacing=1.5)
 
 # labels on image size growth nodes
@@ -133,7 +133,7 @@ img_offsets = [
 for i, g in enumerate(img_growth):
     dx, dy = img_offsets[i]
     ax_img.text(i + dx, g + dy, f"{g:.2f}x",
-                ha='center', va='bottom', fontsize=9,
+                ha='center', va='bottom', fontsize=11,
                 color=color_size, fontweight='bold')
 
 # labels on total weight growth nodes
@@ -148,7 +148,7 @@ for i, (g, w) in enumerate(zip(wt_growth, total_weights)):
     dx, dy = wt_offsets[i]
     ax_wt.text(i + dx, g + dy,
                f"{g:.2f}x\n{w:,.0f}",
-               ha='center', va='bottom', fontsize=9,
+               ha='center', va='bottom', fontsize=11,
                color=color_wt, fontweight='bold', linespacing=1.4)
 
 ax_wt.grid(axis='y', linestyle='--', alpha=0.4, zorder=0)
